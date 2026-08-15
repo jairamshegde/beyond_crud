@@ -1,15 +1,6 @@
 # beyond_crud
 FastAPI Production Journey
 
-Phase-by-phase build documented in [`.claude/Master_FastAPI_BookMarkAPI.md`](.claude/Master_FastAPI_BookMarkAPI.md).
-
-## Setup
-
-```bash
-conda activate beyondcrud
-pip install -r requirements.txt
-```
-
 ## Run (Phase 0)
 
 ```bash
