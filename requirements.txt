@@ -1,0 +1,28 @@
+# ==============================================================================
+# FastAPI Core Stack & Configurations
+# ==============================================================================
+fastapi==0.141.1       # Core framework + built-in standard server components
+pydantic>=2.7.0,<3.0.0               # Fast Rust-backed core data validation
+pydantic-settings>=2.2.1      # Advanced environment variable and secrets management
+
+# ==============================================================================
+# Database & Async PostgreSQL Migrations
+# ==============================================================================
+sqlalchemy==2.0.32              # SQL Toolkit and Object-Relational Mapper (ORM)
+alembic==1.14.0                 # Database migrations tracking
+asyncpg==0.30.0                 # High-performance, async engine for PostgreSQL
+
+# ==============================================================================
+# Security & Hashing (Argon2 Integration)
+# ==============================================================================
+passlib==1.7.4                  # Password hashing engine abstraction layer
+argon2-cffi==25.1.0             # Highly secure Argon2id bindings utilized by passlib
+pyjwt==2.10.1                   # JSON Web Token (JWT) handling
+python-multipart==0.0.18       # Support for multi-part forms and file uploads
+
+# ==============================================================================
+# Distributed Background Tasks
+# ==============================================================================
+celery[redis]==5.6.3                   # Asynchronous distributed task worker engine
+redis==5.2.1                    # Highly efficient broker / caching layer for Celery
+
