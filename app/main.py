@@ -14,7 +14,6 @@ Phase 1; a real database replaces this dict in Phase 2.
 """
 
 from datetime import datetime, timezone
-from itertools import count
 
 from fastapi import FastAPI, HTTPException, status
 from pydantic import BaseModel, Field, HttpUrl
@@ -51,17 +50,19 @@ class BookmarkRead(BaseModel):
 # return without needing a POST first.
 # --------------------------------------------------------------------------
 
-_id_seq = count(start=1)
-_bookmarks: dict[int, BookmarkRead] = {}
+_id_seq = 0
+_bookmarks_db: dict[int, BookmarkRead] = {}
 
 
-def _seed() -> None:
+def _seed_dummy_data() -> None:
+    global _id_seq
     for item in (
         BookmarkCreate(title="FastAPI Docs", url="https://fastapi.tiangolo.com"),
         BookmarkCreate(title="Pydantic Docs", url="https://docs.pydantic.dev"),
     ):
-        bookmark_id = next(_id_seq)
-        _bookmarks[bookmark_id] = BookmarkRead(
+        _id_seq += 1
+        bookmark_id = _id_seq
+        _bookmarks_db[bookmark_id] = BookmarkRead(
             id=bookmark_id,
             title=item.title,
             url=item.url,
@@ -69,7 +70,7 @@ def _seed() -> None:
         )
 
 
-_seed()
+_seed_dummy_data()
 
 
 # --------------------------------------------------------------------------
@@ -89,13 +90,13 @@ def health_check() -> dict[str, str]:
 # were declared first, a request to `/bookmarks/search` would be captured
 # by it and fail int-conversion on "search" instead of reaching this route.
 @app.get("/bookmarks/search", response_model=list[BookmarkRead], tags=["bookmarks"])
-def search_bookmarks(q: str | None = None) -> list[BookmarkRead]:
+def search_bookmarks_db(q: str | None = None) -> list[BookmarkRead]:
     """Query parameter example: `q` is optional (defaults to None) and
     filters bookmarks by a case-insensitive title match."""
     if q is None:
-        return list(_bookmarks.values())
+        return list(_bookmarks_db.values())
     needle = q.lower()
-    return [b for b in _bookmarks.values() if needle in b.title.lower()]
+    return [b for b in _bookmarks_db.values() if needle in b.title.lower()]
 
 
 @app.get("/bookmarks/{bookmark_id}", response_model=BookmarkRead, tags=["bookmarks"])
@@ -103,7 +104,7 @@ def get_bookmark(bookmark_id: int) -> BookmarkRead:
     """Path parameter example: FastAPI converts/validates `bookmark_id` to
     `int` from the URL before this function body ever runs; a non-integer
     segment (other than "search", matched above) yields a 422 automatically."""
-    bookmark = _bookmarks.get(bookmark_id)
+    bookmark = _bookmarks_db.get(bookmark_id)
     if bookmark is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Bookmark not found")
     return bookmark
@@ -120,12 +121,14 @@ def create_bookmark(payload: BookmarkCreate) -> BookmarkRead:
     against `BookmarkCreate` (a 422 is returned automatically if it doesn't
     match). `response_model` then filters/validates the outgoing data against
     `BookmarkRead` - the client only ever sees fields declared there."""
-    bookmark_id = next(_id_seq)
+    global _id_seq
+    _id_seq += 1
+    bookmark_id = _id_seq
     bookmark = BookmarkRead(
         id=bookmark_id,
         title=payload.title,
         url=payload.url,
         created_at=datetime.now(timezone.utc),
     )
-    _bookmarks[bookmark_id] = bookmark
+    _bookmarks_db[bookmark_id] = bookmark
     return bookmark
