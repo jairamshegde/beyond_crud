@@ -17,7 +17,7 @@ ever sees text.
 
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, String
+from sqlalchemy import DateTime, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -32,6 +32,14 @@ class Bookmark(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
+    # No client ever sets this - routes will read it off the authenticated
+    # user (see get_current_user, once it exists) and stamp it on create.
+    # NOT NULL: Phase 3's whole point is that every bookmark has exactly one
+    # owner, not "an owner, optionally." Just a scalar FK column for now, no
+    # `relationship()` - that's Phase 4's job (see Transcript_Reference_Index
+    # Phase 4 row); the ownership check only ever needs
+    # `bookmark.owner_id == current_user.id`, no join required.
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
 
 
 class User(Base):
