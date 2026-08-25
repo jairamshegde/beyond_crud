@@ -35,6 +35,15 @@ other libraries reading the same token may not. `exp` is computed here, in
 UTC, from `settings.access_token_expire_minutes` - PyJWT reads this claim
 back out on decode and rejects an expired token on its own, no manual
 comparison needed later.
+
+`decode_access_token` is the reverse direction, used by `get_current_user`
+(app/dependencies.py). It deliberately does *not* catch anything - a bad
+signature raises `InvalidSignatureError`, an expired token raises
+`ExpiredSignatureError`, both subclasses of `jwt.PyJWTError`. Letting them
+propagate keeps this function a pure "decode or raise" primitive; deciding
+what HTTP response a failure becomes is the caller's job, not this
+module's - same separation `hash_password`/`verify_password` already keep
+from any routing concern.
 """
 
 from datetime import datetime, timedelta, timezone
@@ -61,3 +70,7 @@ def create_access_token(user_id: int) -> str:
     )
     payload = {"sub": str(user_id), "exp": expire}
     return jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
+
+
+def decode_access_token(token: str) -> dict:
+    return jwt.decode(token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
