@@ -1,5 +1,6 @@
 """
 Phase 2: SQLAlchemy ORM model for the `bookmarks` table.
+Phase 3: adds the `users` table.
 
 Deliberately a separate class from the Pydantic schemas in schemas.py - this
 describes the database row (table name, column types, constraints); the
@@ -28,6 +29,33 @@ class Bookmark(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     title: Mapped[str] = mapped_column(String(200))
     url: Mapped[str] = mapped_column(String)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+
+
+class User(Base):
+    """The reference course's `User` (transcript #7) carries a UUID pk plus
+    username/first_name/last_name/is_verified - out of scope for this
+    project's `id` / `email` / `hashed_password` / timestamp shape (see the Phase 3
+    doc's "What to Build"). `id` stays a plain autoincrement int, matching
+    `Bookmark`, rather than switching primary-key styles mid-project.
+
+    `email` is unique + indexed: login looks a user up *by* email, so this
+    is the column every auth query filters on - same reasoning as an index
+    on any column you `WHERE` on frequently.
+
+    `hashed_password` never appears in a Pydantic *response* schema (see
+    schemas.py once auth schemas land) - keeping it out of the schema is
+    what keeps it out of any JSON response, not anything enforced here at
+    the model layer. The model's only job is describing the column.
+    """
+
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    hashed_password: Mapped[str] = mapped_column(String(255))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
