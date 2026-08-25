@@ -5,6 +5,7 @@ fastapi==0.141.1       # Core framework + built-in standard server components
 uvicorn[standard]==0.52.3      # ASGI server used to run the app (ships uvloop/httptools)
 pydantic>=2.7.0,<3.0.0               # Fast Rust-backed core data validation
 pydantic-settings>=2.2.1      # Advanced environment variable and secrets management
+email-validator==2.3.0          # Backs Pydantic's EmailStr - real email format validation
 
 # ==============================================================================
 # Database & Async PostgreSQL Migrations
