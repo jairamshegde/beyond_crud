@@ -1,5 +1,5 @@
 """
-Phase 3: Registration route.
+Phase 3: Registration + login routes.
 
 Same shape as bookmarks.py's routes - a plain SQLAlchemy query inline in the
 route body, no separate service-layer class. The reference course wraps this
@@ -15,8 +15,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.database import get_db
 from app.models import User
-from app.schemas import UserCreate, UserRead
-from app.security import hash_password
+from app.schemas import Token, UserCreate, UserLogin, UserRead
+from app.security import create_access_token, hash_password, verify_password
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -45,3 +45,21 @@ def register(payload: UserCreate, db: Session = Depends(get_db)) -> User:
     db.commit()
     db.refresh(user)
     return user
+
+
+@router.post("/login", response_model=Token)
+def login(payload: UserLogin, db: Session = Depends(get_db)) -> Token:
+    """Same "Invalid email or password" detail whether the email doesn't
+    exist *or* the password is wrong - a distinct "no such email" message
+    would let an attacker enumerate which addresses are registered by
+    watching which error comes back. One generic 401 either way; only this
+    server-side branching (not the response) tells the two cases apart.
+    """
+    user = db.execute(select(User).where(User.email == payload.email)).scalar_one_or_none()
+    if user is None or not verify_password(payload.password, user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password"
+        )
+
+    access_token = create_access_token(user.id)
+    return Token(access_token=access_token)

@@ -65,3 +65,23 @@ class UserRead(BaseModel):
     id: int
     email: EmailStr
     created_at: datetime
+
+
+class UserLogin(BaseModel):
+    """Deliberately not reusing `UserCreate`: same two fields, but
+    `password` here has no `min_length` - that rule polices what a *new*
+    password must look like, not what an existing one is allowed to be. A
+    correct password shorter than 8 characters should still log in; whether
+    it's correct is `verify_password`'s job, not this schema's."""
+
+    email: EmailStr
+    password: str
+
+
+class Token(BaseModel):
+    """The conventional OAuth2 bearer-token response shape - `token_type`
+    is what tells a client (and, later, Swagger's "Authorize" button) to
+    send this back as `Authorization: Bearer <access_token>`."""
+
+    access_token: str
+    token_type: str = "bearer"

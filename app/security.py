@@ -1,5 +1,7 @@
 """
-Phase 3: Password hashing.
+Phase 3: Password hashing + JWT access tokens.
+
+## Password hashing
 
 A thin wrapper around passlib's `CryptContext`, scoped to Argon2 (specifically
 Argon2id - passlib/argon2-cffi's default) instead of the reference course's
@@ -21,9 +23,26 @@ delegate to:
      params still verifies correctly - `CryptContext.needs_update(hash)`
      is how you'd detect and silently re-hash it on next successful login.
      Not wired up yet - noted for when it's needed.
+
+## JWT access tokens
+
+`create_access_token` mirrors `src/auth/utils.py`'s `create_access_token`
+(transcript #9) with PyJWT instead of the fields this project doesn't need
+yet (no refresh/jti/blocklist - those are later transcripts, not this
+phase's scope). `sub` is the user's id, stored as a *string* - the JWT spec
+expects string claims, and PyJWT will silently accept an int here, but
+other libraries reading the same token may not. `exp` is computed here, in
+UTC, from `settings.access_token_expire_minutes` - PyJWT reads this claim
+back out on decode and rejects an expired token on its own, no manual
+comparison needed later.
 """
 
+from datetime import datetime, timedelta, timezone
+
+import jwt
 from passlib.context import CryptContext
+
+from app.config import settings
 
 pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
 
@@ -34,3 +53,11 @@ def hash_password(password: str) -> str:
 
 def verify_password(password: str, hashed_password: str) -> bool:
     return pwd_context.verify(password, hashed_password)
+
+
+def create_access_token(user_id: int) -> str:
+    expire = datetime.now(timezone.utc) + timedelta(
+        minutes=settings.access_token_expire_minutes
+    )
+    payload = {"sub": str(user_id), "exp": expire}
+    return jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
