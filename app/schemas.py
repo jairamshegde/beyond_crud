@@ -10,11 +10,18 @@ call. Phase 2's routes build one from a SQLAlchemy `Bookmark` ORM object
 instead - `from_attributes=True` is what allows `BookmarkRead.model_validate(orm_obj)`
 (or `response_model` doing that for you) to read `orm_obj.id`, `.title`, etc.
 directly off the object rather than requiring a dict.
+
+Phase 3: adds UserCreate/UserRead, same one-shape-per-moment split. The
+part that matters most here is what's *missing* from UserRead: no
+`hashed_password` field. A response schema only ever serializes the fields
+it declares, so a hash simply never has a way to reach a JSON response -
+this is the actual enforcement point the model-layer docstring in
+models.py pointed at.
 """
 
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field, HttpUrl
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, HttpUrl
 
 
 class BookmarkCreate(BaseModel):
@@ -37,4 +44,24 @@ class BookmarkRead(BaseModel):
     id: int
     title: str
     url: HttpUrl
+    created_at: datetime
+
+
+class UserCreate(BaseModel):
+    """`EmailStr` (needs the `email-validator` package - see
+    requirements.txt) rejects malformed addresses at the API boundary, the
+    same job `HttpUrl` already does for bookmark URLs. `password` is plain
+    `str` here on purpose: it's the one field this schema receives but
+    never re-emits - `hash_password()` (security.py) consumes it in the
+    route, and only the hash ever reaches the database."""
+
+    email: EmailStr = Field(examples=["jane@example.com"])
+    password: str = Field(min_length=8, examples=["correct horse battery staple"])
+
+
+class UserRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    email: EmailStr
     created_at: datetime
