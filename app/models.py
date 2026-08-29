@@ -35,19 +35,21 @@ class Bookmark(Base):
     # No client ever sets this - routes will read it off the authenticated
     # user (see get_current_user, once it exists) and stamp it on create.
     # NOT NULL: Phase 3's whole point is that every bookmark has exactly one
-    # owner, not "an owner, optionally." Just a scalar FK column for now, no
-    # `relationship()` - that's Phase 4's job (see Transcript_Reference_Index
-    # Phase 4 row); the ownership check only ever needs
-    # `bookmark.owner_id == current_user.id`, no join required.
+    # owner, not "an owner, optionally." Just a scalar FK column, no
+    # `relationship()` - the ownership check only ever needs
+    # `bookmark.owner_id == current_user.id`, a plain comparison, no join
+    # required. No phase on the current roadmap needs `user.bookmarks`-style
+    # navigation, so there's nothing a `relationship()` would earn its keep
+    # doing yet; add one if and when a real need for that navigation shows up.
     owner_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
 
 
 class User(Base):
-    """The reference course's `User` (transcript #7) carries a UUID pk plus
-    username/first_name/last_name/is_verified - out of scope for this
-    project's `id` / `email` / `hashed_password` / timestamp shape (see the Phase 3
-    doc's "What to Build"). `id` stays a plain autoincrement int, matching
-    `Bookmark`, rather than switching primary-key styles mid-project.
+    """Deliberately minimal - `id` / `email` / `hashed_password` / timestamp
+    is everything this project's "What to Build" actually needs (see the
+    Phase 3 doc); no username, no first/last name, no verification flag.
+    `id` stays a plain autoincrement int, matching `Bookmark`, rather than
+    reaching for a UUID primary key this project has no need for.
 
     `email` is unique + indexed: login looks a user up *by* email, so this
     is the column every auth query filters on - same reasoning as an index

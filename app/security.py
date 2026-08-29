@@ -4,11 +4,10 @@ Phase 3: Password hashing + JWT access tokens.
 ## Password hashing
 
 A thin wrapper around passlib's `CryptContext`, scoped to Argon2 (specifically
-Argon2id - passlib/argon2-cffi's default) instead of the reference course's
-bcrypt (see `8-User Account Creation...txt` and `src/auth/utils.py` for the
-bcrypt version this is patterned on) - a deliberate divergence, not an
-oversight; see the Phase 3 doc's hashing notes for why Argon2's memory-hard
-cost model is the stronger current default.
+Argon2id - passlib/argon2-cffi's default) rather than bcrypt - a deliberate
+choice, not a default fallen into; see the Phase 3 doc's hashing notes for
+why Argon2's memory-hard cost model is the stronger current default (bcrypt
+is CPU-hard only, which parallelizes more cheaply on GPUs/ASICs).
 
 `CryptContext` does three things `hash_password`/`verify_password` just
 delegate to:
@@ -26,10 +25,10 @@ delegate to:
 
 ## JWT access tokens
 
-`create_access_token` mirrors `src/auth/utils.py`'s `create_access_token`
-(transcript #9) with PyJWT instead of the fields this project doesn't need
-yet (no refresh/jti/blocklist - those are later transcripts, not this
-phase's scope). `sub` is the user's id, stored as a *string* - the JWT spec
+`create_access_token` builds a minimal JWT with PyJWT - just `sub` and `exp`,
+none of the fields this project doesn't need yet (no refresh token, no `jti`,
+no revocation blocklist - out of scope for what Phase 3 actually requires).
+`sub` is the user's id, stored as a *string* - the JWT spec
 expects string claims, and PyJWT will silently accept an int here, but
 other libraries reading the same token may not. `exp` is computed here, in
 UTC, from `settings.access_token_expire_minutes` - PyJWT reads this claim

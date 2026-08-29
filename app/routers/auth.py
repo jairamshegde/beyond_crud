@@ -2,10 +2,11 @@
 Phase 3: Registration + login routes.
 
 Same shape as bookmarks.py's routes - a plain SQLAlchemy query inline in the
-route body, no separate service-layer class. The reference course wraps this
-in a `UserService` (`src/auth/service.py`); this project stays flat rather
-than introducing a new layer partway through, consistent with every other
-route so far.
+route body, no separate service-layer class. A dedicated service layer
+(wrapping these queries in a `UserService`-style class) is a reasonable
+pattern once the query logic gets reused across multiple routes or grows
+past what reads cleanly inline; this project stays flat for now, consistent
+with every other route so far.
 """
 
 from sqlalchemy import select

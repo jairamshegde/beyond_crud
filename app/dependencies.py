@@ -6,17 +6,21 @@ cross-cutting dependency - bookmarks.py will depend on it too, once
 ownership enforcement lands, same reason get_db lives in database.py
 rather than inside any one router.
 
-`HTTPBearer` (not `OAuth2PasswordBearer` - see the chat for why) does
-exactly one job: read the `Authorization` header, confirm it's shaped like
-`Bearer <token>`, and hand back an `HTTPAuthorizationCredentials` object
-whose `.credentials` is the token string. It does not decode or verify
-anything - same "extracts, doesn't validate" role OAuth2PasswordBearer
-would have played, just matched to how this project's tokens are actually
-obtained (see transcript #10's own `HTTPBearer` usage). Missing header, or
-a scheme that isn't literally "Bearer" -> `HTTPBearer` itself raises 401
-"Not authenticated" before `get_current_user` ever runs; a syntactically
-fine but bogus/expired token is what `get_current_user` below is
-responsible for catching.
+`HTTPBearer` (not `OAuth2PasswordBearer`) does exactly one job: read the
+`Authorization` header, confirm it's shaped like `Bearer <token>`, and hand
+back an `HTTPAuthorizationCredentials` object whose `.credentials` is the
+token string. It does not decode or verify anything - same
+"extracts, doesn't validate" role `OAuth2PasswordBearer` would have played.
+`OAuth2PasswordBearer` was deliberately not used here: its Swagger
+"Authorize" integration assumes a `tokenUrl` accepting OAuth2's own
+form-encoded `username`/`password` fields (see FastAPI's own
+[Simple OAuth2](https://fastapi.tiangolo.com/tutorial/security/simple-oauth2/)
+docs), and this project's `/auth/login` accepts JSON with an `email` field
+instead - `HTTPBearer` just expects a token to paste in, which matches that
+shape as-is. Missing header, or a scheme that isn't literally "Bearer" ->
+`HTTPBearer` itself raises 401 "Not authenticated" before `get_current_user`
+ever runs; a syntactically fine but bogus/expired token is what
+`get_current_user` below is responsible for catching.
 """
 
 import jwt
