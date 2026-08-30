@@ -28,3 +28,11 @@ python-multipart==0.0.18       # Support for multi-part forms and file uploads
 celery[redis]==5.6.3                   # Asynchronous distributed task worker engine
 redis==5.2.1                    # Highly efficient broker / caching layer for Celery
 
+# ==============================================================================
+# Testing (Phase 4)
+# ==============================================================================
+pytest==8.3.4                   # Test runner
+httpx2                          # HTTP client FastAPI's TestClient is built on - httpx's
+                                 # maintained successor (plain httpx is deprecated for this
+                                 # use as of Starlette's May 2026 TestClient support)
+
