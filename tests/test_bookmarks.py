@@ -141,3 +141,15 @@ def test_endpoints_require_authentication(client: TestClient) -> None:
     response = client.get("/bookmarks")
 
     assert response.status_code == 401
+
+
+def test_fake_auth_client_works_without_a_real_login(fake_auth_client: TestClient) -> None:
+    """Demonstrates the `get_current_user`-override shortcut from the
+    Phase 4 doc: no `/auth/register` or `/auth/login` call happened for
+    this test, yet ownership scoping (owner_id stamped from the "current
+    user") still works correctly - proof the override is a faster route to
+    the same authenticated state, not a weaker one."""
+    create = fake_auth_client.post("/bookmarks", json=BOOKMARK_PAYLOAD)
+
+    assert create.status_code == 201
+    assert fake_auth_client.get(f"/bookmarks/{create.json()['id']}").status_code == 200

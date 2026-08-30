@@ -24,7 +24,10 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.database import Base, get_db
+from app.dependencies import get_current_user
 from app.main import app
+from app.models import User
+from app.security import hash_password
 
 TEST_DATABASE_URL = "sqlite://"  # in-memory, distinct from bookmarks.db
 
@@ -92,3 +95,31 @@ def auth_client(client: TestClient, registered_user: dict[str, str]) -> TestClie
     token = response.json()["access_token"]
     client.headers["Authorization"] = f"Bearer {token}"
     return client
+
+
+@pytest.fixture()
+def fake_auth_client(client: TestClient, db_session: Session) -> Generator[TestClient, None, None]:
+    """The faster alternative from the Phase 4 doc: skips the real
+    register/login/JWT round trip entirely by overriding `get_current_user`
+    directly. Right for a test that needs *an* authenticated user to
+    exercise something else (e.g. the querying endpoint in Phase 5) and
+    isn't itself testing auth - `auth_client` above is still what to reach
+    for when the test is actually about auth or wants end-to-end
+    confidence that register -> login -> protected access genuinely works
+    together.
+
+    Still inserts a real `User` row: routes that touch `current_user.id`
+    (every bookmark route does, for ownership scoping) need it to actually
+    exist in the test database, not just be a mock object floating in
+    memory.
+    """
+    user = User(email="fake@example.com", hashed_password=hash_password("unused"))
+    db_session.add(user)
+    db_session.commit()
+    db_session.refresh(user)
+
+    app.dependency_overrides[get_current_user] = lambda: user
+    try:
+        yield client
+    finally:
+        del app.dependency_overrides[get_current_user]
