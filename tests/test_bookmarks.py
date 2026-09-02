@@ -38,12 +38,17 @@ def test_create_and_get_bookmark(auth_client: TestClient) -> None:
 
 
 def test_list_bookmarks_returns_only_current_users_bookmarks(auth_client: TestClient) -> None:
+    """Phase 5: `GET /bookmarks` now returns the pagination envelope
+    (`items`/`total`/`page`/`size`/`total_pages`), not a bare list - see
+    tests/test_bookmark_query.py for the envelope's own dedicated coverage."""
     auth_client.post("/bookmarks", json=BOOKMARK_PAYLOAD)
 
     response = auth_client.get("/bookmarks")
 
     assert response.status_code == 200
-    assert len(response.json()) == 1
+    body = response.json()
+    assert body["total"] == 1
+    assert len(body["items"]) == 1
 
 
 def test_put_replaces_title_and_url(auth_client: TestClient) -> None:
@@ -56,6 +61,29 @@ def test_put_replaces_title_and_url(auth_client: TestClient) -> None:
 
     assert response.status_code == 200
     assert response.json()["title"] == "Pydantic Docs"
+
+
+def test_put_clears_category_and_description_when_omitted(auth_client: TestClient) -> None:
+    """PUT is full replacement, not a merge - a code review flagged this as
+    looking like accidental data loss, but it's the deliberate PUT-vs-PATCH
+    split (see the Phase 1 doc's interview trap on this exact question):
+    every client-writable field is overwritten wholesale, including the two
+    Phase 5 added. A client that wants to change just the title without
+    touching category/description should send a PATCH, not a PUT - this
+    test is what makes that a documented contract instead of a silent,
+    untested side effect."""
+    create = auth_client.post(
+        "/bookmarks", json={**BOOKMARK_PAYLOAD, "category": "docs", "description": "official docs"}
+    )
+    bookmark_id = create.json()["id"]
+    assert create.json()["category"] == "docs"
+
+    response = auth_client.put(f"/bookmarks/{bookmark_id}", json=BOOKMARK_PAYLOAD)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["category"] is None
+    assert body["description"] is None
 
 
 def test_patch_updates_only_the_sent_field(auth_client: TestClient) -> None:

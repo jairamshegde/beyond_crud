@@ -27,6 +27,11 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field, HttpUrl
 class BookmarkCreate(BaseModel):
     title: str = Field(min_length=1, max_length=200, examples=["FastAPI Docs"])
     url: HttpUrl = Field(examples=["https://fastapi.tiangolo.com"])
+    # Phase 5: both optional, matching the model's nullable columns - a
+    # bookmark doesn't need a category or description to be valid, it just
+    # can't be *filtered or searched* on whichever one it skips.
+    category: str | None = Field(default=None, max_length=100, examples=["docs"])
+    description: str | None = Field(default=None, max_length=500)
 
 
 class BookmarkUpdate(BaseModel):
@@ -36,6 +41,8 @@ class BookmarkUpdate(BaseModel):
 
     title: str | None = Field(default=None, min_length=1, max_length=200)
     url: HttpUrl | None = None
+    category: str | None = Field(default=None, max_length=100)
+    description: str | None = Field(default=None, max_length=500)
 
 
 class BookmarkRead(BaseModel):
@@ -44,7 +51,23 @@ class BookmarkRead(BaseModel):
     id: int
     title: str
     url: HttpUrl
+    category: str | None
+    description: str | None
     created_at: datetime
+
+
+class PaginatedBookmarks(BaseModel):
+    """Phase 5's response envelope for `GET /bookmarks` - metadata a client
+    needs to build pagination UI (current page, total count, page count)
+    without a second round-trip just to ask "how many are there." `items`
+    reuses `BookmarkRead` as-is; nothing about a single bookmark's shape
+    changes just because it's now returned inside a page instead of alone."""
+
+    items: list[BookmarkRead]
+    total: int
+    page: int
+    size: int
+    total_pages: int
 
 
 class UserCreate(BaseModel):

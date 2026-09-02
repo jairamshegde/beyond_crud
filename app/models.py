@@ -32,6 +32,12 @@ class Bookmark(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
+    # Phase 5: both nullable, both optional at the API boundary too (see
+    # schemas.py) - existing rows have neither, and there's no sensible
+    # default to backfill ("uncategorized"? empty string?) so NULL is the
+    # honest representation of "never set," not a stand-in value.
+    category: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    description: Mapped[str | None] = mapped_column(String(500), nullable=True)
     # No client ever sets this - routes will read it off the authenticated
     # user (see get_current_user, once it exists) and stamp it on create.
     # NOT NULL: Phase 3's whole point is that every bookmark has exactly one
