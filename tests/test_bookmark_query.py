@@ -60,6 +60,21 @@ def test_search_matches_description_not_just_title(fake_auth_client: TestClient)
     assert response.json()["items"][0]["title"] == "Untitled Link"
 
 
+def test_search_treats_percent_as_a_literal_character_not_a_wildcard(fake_auth_client: TestClient) -> None:
+    """A code review catch: `ilike`'s pattern language reads an unescaped
+    `%` as "any run of characters." Searching for the literal text "50%"
+    must not also match "500 dollars" - if it does, the search is silently
+    over-broad."""
+    _create(fake_auth_client, "50% off deals")
+    _create(fake_auth_client, "500 dollars")
+
+    response = fake_auth_client.get("/bookmarks", params={"search": "50%"})
+
+    body = response.json()
+    assert body["total"] == 1
+    assert body["items"][0]["title"] == "50% off deals"
+
+
 def test_category_and_search_combine_as_and_not_or(fake_auth_client: TestClient) -> None:
     _create(fake_auth_client, "FastAPI Docs", category="docs")
     _create(fake_auth_client, "FastAPI Tutorial", category="video")

@@ -20,7 +20,7 @@ here (title OR description), so keeping both would just be two competing
 ways to do the same thing.
 """
 
-from typing import Literal
+from typing import Literal, get_args
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
@@ -34,16 +34,42 @@ from app.schemas import BookmarkCreate, BookmarkRead, BookmarkUpdate, PaginatedB
 
 router = APIRouter(prefix="/bookmarks", tags=["bookmarks"])
 
-# Phase 5's allowlist: `sort_by` only ever picks an index into this dict -
-# it never gets handed to the model dynamically (no `getattr(Bookmark,
-# sort_by)`). `Literal[*_SORT_COLUMNS]` below already rejects anything not
-# a key here with a 422 before the handler runs; this dict is the second,
-# independent guarantee - even if that type constraint were ever loosened,
-# an unrecognized key still can't become part of the query's structure.
-_SORT_COLUMNS = {
-    "created_at": Bookmark.created_at,
-    "title": Bookmark.title,
-}
+# Phase 5's allowlist - one source of truth, not two. Originally this was
+# a hand-written dict AND a separately hand-written `Literal[...]` on the
+# `sort_by` parameter below, kept in sync only by remembering to edit both
+# every time - a code review caught it: nothing enforced they'd ever agree,
+# so a future edit to one and not the other could pass FastAPI's 422 check
+# with a `sort_by` this dict doesn't recognize, `KeyError`-crashing into an
+# unhandled 500 instead of the clean rejection the allowlist was supposed
+# to guarantee.
+#
+# `SortBy` is now the only place these names are written - a real `Literal`
+# type, so FastAPI/Pydantic and any static type checker both understand it
+# fully (an earlier attempt at deriving the Literal itself via `Literal[
+# *_SORT_FIELDS]` unpacking runs fine but isn't valid to a type checker -
+# Pyright flagged it immediately, so it's not actually the single source of
+# truth it looked like). `_SORT_COLUMNS` is what's derived from it instead,
+# via `get_args()`, which only ever reads the Literal - it doesn't retype it.
+# `getattr(Bookmark, name)` is safe here specifically because `name` walks
+# that Literal's own values - written in this file, never the client's
+# string. The client's `sort_by` only ever becomes a dict key into the
+# *already built* `_SORT_COLUMNS`, the same menu-not-recipe-card rule as
+# before.
+SortBy = Literal["created_at", "title"]
+_SORT_COLUMNS = {name: getattr(Bookmark, name) for name in get_args(SortBy)}
+
+
+def _escape_like(value: str) -> str:
+    """`ilike`'s pattern language treats `%` (any run of characters) and
+    `_` (any single character) as wildcards, not literal text - a code
+    review caught that `search` was being dropped straight into a pattern
+    unescaped, so a literal `%` or `_` typed by a user silently turned into
+    a wildcard instead of the character they meant. Backslash-escaping each
+    one first (and the escape character itself, so a literal `\\` in the
+    input can't accidentally escape the *next* character) is what makes the
+    following `.ilike(pattern, escape="\\")` treat the user's text as text.
+    """
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
 def _get_bookmark_or_404(db: Session, bookmark_id: int, owner_id: int) -> Bookmark:
@@ -68,7 +94,7 @@ def list_bookmarks(
     search: str | None = Query(
         default=None, description="Case-insensitive substring match against title or description"
     ),
-    sort_by: Literal["created_at", "title"] = Query(default="created_at"),
+    sort_by: SortBy = Query(default="created_at"),
     order: Literal["asc", "desc"] = Query(default="desc"),
     page: int = Query(default=1, ge=1, description="1-indexed page number"),
     size: int = Query(default=20, ge=1, le=100, description="Items per page, capped at 100"),
@@ -91,8 +117,13 @@ def list_bookmarks(
     if category is not None:
         stmt = stmt.where(Bookmark.category == category)
     if search is not None:
-        pattern = f"%{search}%"
-        stmt = stmt.where(or_(Bookmark.title.ilike(pattern), Bookmark.description.ilike(pattern)))
+        pattern = f"%{_escape_like(search)}%"
+        stmt = stmt.where(
+            or_(
+                Bookmark.title.ilike(pattern, escape="\\"),
+                Bookmark.description.ilike(pattern, escape="\\"),
+            )
+        )
 
     total = db.execute(select(func.count()).select_from(stmt.subquery())).scalar_one()
 
