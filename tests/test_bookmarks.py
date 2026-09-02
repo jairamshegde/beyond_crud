@@ -38,12 +38,17 @@ def test_create_and_get_bookmark(auth_client: TestClient) -> None:
 
 
 def test_list_bookmarks_returns_only_current_users_bookmarks(auth_client: TestClient) -> None:
+    """Phase 5: `GET /bookmarks` now returns the pagination envelope
+    (`items`/`total`/`page`/`size`/`total_pages`), not a bare list - see
+    tests/test_bookmark_query.py for the envelope's own dedicated coverage."""
     auth_client.post("/bookmarks", json=BOOKMARK_PAYLOAD)
 
     response = auth_client.get("/bookmarks")
 
     assert response.status_code == 200
-    assert len(response.json()) == 1
+    body = response.json()
+    assert body["total"] == 1
+    assert len(body["items"]) == 1
 
 
 def test_put_replaces_title_and_url(auth_client: TestClient) -> None:
