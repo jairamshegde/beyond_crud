@@ -18,6 +18,12 @@ time. The old dedicated `/bookmarks/search?q=` route is gone - its whole
 job (case-insensitive title search) is now a subset of what `search` does
 here (title OR description), so keeping both would just be two competing
 ways to do the same thing.
+
+Phase 6: `_get_bookmark_or_404`'s inline `HTTPException` is now
+`raise BookmarkNotFoundError()` (see exceptions.py) - this file no longer
+decides what a 404 looks like, just that one happened. The single handler
+registered in main.py does the formatting, the same way for every domain
+error in the app, not just this one.
 """
 
 from typing import Literal, get_args
@@ -25,10 +31,11 @@ from typing import Literal, get_args
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Query, status
 
 from app.database import get_db
 from app.dependencies import get_current_user
+from app.exceptions import BookmarkNotFoundError
 from app.models import Bookmark, User
 from app.schemas import BookmarkCreate, BookmarkRead, BookmarkUpdate, PaginatedBookmarks
 
@@ -84,7 +91,7 @@ def _get_bookmark_or_404(db: Session, bookmark_id: int, owner_id: int) -> Bookma
     stmt = select(Bookmark).where(Bookmark.id == bookmark_id, Bookmark.owner_id == owner_id)
     bookmark = db.execute(stmt).scalar_one_or_none()
     if bookmark is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Bookmark not found")
+        raise BookmarkNotFoundError()
     return bookmark
 
 

@@ -24,11 +24,12 @@ ever runs; a syntactically fine but bogus/expired token is what
 """
 
 import jwt
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.exceptions import InvalidTokenError
 from app.models import User
 from app.security import decode_access_token
 
@@ -39,26 +40,23 @@ def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
     db: Session = Depends(get_db),
 ) -> User:
-    """One exception, reused for every way this can fail - bad signature,
-    expired token, a `sub` that isn't a valid int, or a `sub` naming a user
-    that's since been deleted. None of these should tell the client *which*
-    one happened (same enumeration reasoning as login's single 401) - just
-    that whatever they presented isn't currently a valid, live session.
+    """One exception type, raised for every way this can fail - bad
+    signature, expired token, a `sub` that isn't a valid int, or a `sub`
+    naming a user that's since been deleted. None of these should tell the
+    client *which* one happened (same enumeration reasoning as login's
+    single 401) - just that whatever they presented isn't currently a
+    valid, live session. Phase 6: `InvalidTokenError` (exceptions.py)
+    carries its own `WWW-Authenticate: Bearer` header now - this function
+    no longer builds the response itself, just raises what happened.
     """
-    unauthorized = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Invalid or expired token",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-
     try:
         payload = decode_access_token(credentials.credentials)
         user_id = int(payload["sub"])
     except (jwt.PyJWTError, KeyError, ValueError):
-        raise unauthorized
+        raise InvalidTokenError()
 
     user = db.get(User, user_id)
     if user is None:
-        raise unauthorized
+        raise InvalidTokenError()
 
     return user
