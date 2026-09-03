@@ -19,7 +19,7 @@ from app.config import settings
 
 
 def test_users_me_requires_a_token(client: TestClient) -> None:
-    response = client.get("/users/me")
+    response = client.get("/v1/users/me")
 
     assert response.status_code == 401
 
@@ -27,15 +27,15 @@ def test_users_me_requires_a_token(client: TestClient) -> None:
 def test_users_me_rejects_malformed_token(client: TestClient) -> None:
     client.headers["Authorization"] = "Bearer not-a-real-jwt"
 
-    response = client.get("/users/me")
+    response = client.get("/v1/users/me")
 
     assert response.status_code == 401
 
 
 def test_users_me_rejects_expired_token(client: TestClient, registered_user: dict[str, str]) -> None:
-    login = client.post("/auth/login", json=registered_user)
+    login = client.post("/v1/auth/login", json=registered_user)
     user_id = client.get(
-        "/users/me", headers={"Authorization": f"Bearer {login.json()['access_token']}"}
+        "/v1/users/me", headers={"Authorization": f"Bearer {login.json()['access_token']}"}
     ).json()["id"]
 
     expired_token = jwt.encode(
@@ -45,7 +45,7 @@ def test_users_me_rejects_expired_token(client: TestClient, registered_user: dic
     )
     client.headers["Authorization"] = f"Bearer {expired_token}"
 
-    response = client.get("/users/me")
+    response = client.get("/v1/users/me")
 
     assert response.status_code == 401
 
@@ -65,13 +65,13 @@ def test_users_me_rejects_token_for_a_user_that_no_longer_exists(client: TestCli
     )
     client.headers["Authorization"] = f"Bearer {token_for_nobody}"
 
-    response = client.get("/users/me")
+    response = client.get("/v1/users/me")
 
     assert response.status_code == 401
 
 
 def test_users_me_succeeds_with_a_valid_token(auth_client: TestClient) -> None:
-    response = auth_client.get("/users/me")
+    response = auth_client.get("/v1/users/me")
 
     assert response.status_code == 200
     assert response.json()["email"] == "jane@example.com"
@@ -90,11 +90,11 @@ def test_get_current_users_own_failure_modes_return_the_identical_response(
     expected to look different; only get_current_user's own failure modes
     are the ones this test's guarantee actually applies to."""
     client.headers["Authorization"] = "Bearer garbage"
-    malformed = client.get("/users/me")
+    malformed = client.get("/v1/users/me")
 
-    login = client.post("/auth/login", json=registered_user)
+    login = client.post("/v1/auth/login", json=registered_user)
     user_id = client.get(
-        "/users/me", headers={"Authorization": f"Bearer {login.json()['access_token']}"}
+        "/v1/users/me", headers={"Authorization": f"Bearer {login.json()['access_token']}"}
     ).json()["id"]
     expired_token = jwt.encode(
         {"sub": str(user_id), "exp": datetime.now(timezone.utc) - timedelta(minutes=1)},
@@ -102,7 +102,7 @@ def test_get_current_users_own_failure_modes_return_the_identical_response(
         algorithm=settings.jwt_algorithm,
     )
     client.headers["Authorization"] = f"Bearer {expired_token}"
-    expired = client.get("/users/me")
+    expired = client.get("/v1/users/me")
 
     token_for_nobody = jwt.encode(
         {"sub": "999999", "exp": datetime.now(timezone.utc) + timedelta(minutes=30)},
@@ -110,7 +110,7 @@ def test_get_current_users_own_failure_modes_return_the_identical_response(
         algorithm=settings.jwt_algorithm,
     )
     client.headers["Authorization"] = f"Bearer {token_for_nobody}"
-    deleted_user = client.get("/users/me")
+    deleted_user = client.get("/v1/users/me")
 
     assert malformed.status_code == expired.status_code == deleted_user.status_code == 401
     assert malformed.json() == expired.json() == deleted_user.json()

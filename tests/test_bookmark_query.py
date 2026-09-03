@@ -18,7 +18,7 @@ def _create(
     description: str | None = None,
 ) -> dict:
     payload = {"title": title, "url": "https://example.com", "category": category, "description": description}
-    response = client.post("/bookmarks", json=payload)
+    response = client.post("/v1/bookmarks", json=payload)
     assert response.status_code == 201
     return response.json()
 
@@ -30,7 +30,7 @@ def test_category_filter_returns_only_matching_bookmarks(fake_auth_client: TestC
     _create(fake_auth_client, "FastAPI Docs", category="docs")
     _create(fake_auth_client, "Kitten Video", category="fun")
 
-    response = fake_auth_client.get("/bookmarks", params={"category": "docs"})
+    response = fake_auth_client.get("/v1/bookmarks", params={"category": "docs"})
 
     assert response.status_code == 200
     body = response.json()
@@ -42,7 +42,7 @@ def test_search_matches_title(fake_auth_client: TestClient) -> None:
     _create(fake_auth_client, "FastAPI Docs")
     _create(fake_auth_client, "Kitten Video")
 
-    response = fake_auth_client.get("/bookmarks", params={"search": "fastapi"})
+    response = fake_auth_client.get("/v1/bookmarks", params={"search": "fastapi"})
 
     assert response.json()["total"] == 1
     assert response.json()["items"][0]["title"] == "FastAPI Docs"
@@ -54,7 +54,7 @@ def test_search_matches_description_not_just_title(fake_auth_client: TestClient)
     _create(fake_auth_client, "Untitled Link", description="A guide to async Python")
     _create(fake_auth_client, "Kitten Video")
 
-    response = fake_auth_client.get("/bookmarks", params={"search": "async"})
+    response = fake_auth_client.get("/v1/bookmarks", params={"search": "async"})
 
     assert response.json()["total"] == 1
     assert response.json()["items"][0]["title"] == "Untitled Link"
@@ -68,7 +68,7 @@ def test_search_treats_percent_as_a_literal_character_not_a_wildcard(fake_auth_c
     _create(fake_auth_client, "50% off deals")
     _create(fake_auth_client, "500 dollars")
 
-    response = fake_auth_client.get("/bookmarks", params={"search": "50%"})
+    response = fake_auth_client.get("/v1/bookmarks", params={"search": "50%"})
 
     body = response.json()
     assert body["total"] == 1
@@ -79,7 +79,7 @@ def test_category_and_search_combine_as_and_not_or(fake_auth_client: TestClient)
     _create(fake_auth_client, "FastAPI Docs", category="docs")
     _create(fake_auth_client, "FastAPI Tutorial", category="video")
 
-    response = fake_auth_client.get("/bookmarks", params={"category": "docs", "search": "fastapi"})
+    response = fake_auth_client.get("/v1/bookmarks", params={"category": "docs", "search": "fastapi"})
 
     body = response.json()
     assert body["total"] == 1
@@ -93,7 +93,7 @@ def test_sort_by_title_ascending(fake_auth_client: TestClient) -> None:
     for title in ("Banana", "Apple", "Cherry"):
         _create(fake_auth_client, title)
 
-    response = fake_auth_client.get("/bookmarks", params={"sort_by": "title", "order": "asc"})
+    response = fake_auth_client.get("/v1/bookmarks", params={"sort_by": "title", "order": "asc"})
 
     titles = [item["title"] for item in response.json()["items"]]
     assert titles == ["Apple", "Banana", "Cherry"]
@@ -103,7 +103,7 @@ def test_sort_by_title_descending(fake_auth_client: TestClient) -> None:
     for title in ("Banana", "Apple", "Cherry"):
         _create(fake_auth_client, title)
 
-    response = fake_auth_client.get("/bookmarks", params={"sort_by": "title", "order": "desc"})
+    response = fake_auth_client.get("/v1/bookmarks", params={"sort_by": "title", "order": "desc"})
 
     titles = [item["title"] for item in response.json()["items"]]
     assert titles == ["Cherry", "Banana", "Apple"]
@@ -117,7 +117,7 @@ def test_sort_by_created_at_reflects_insertion_order(fake_auth_client: TestClien
         _create(fake_auth_client, title)
         time.sleep(0.001)
 
-    response = fake_auth_client.get("/bookmarks", params={"sort_by": "created_at", "order": "asc"})
+    response = fake_auth_client.get("/v1/bookmarks", params={"sort_by": "created_at", "order": "asc"})
 
     titles = [item["title"] for item in response.json()["items"]]
     assert titles == ["First", "Second", "Third"]
@@ -126,7 +126,7 @@ def test_sort_by_created_at_reflects_insertion_order(fake_auth_client: TestClien
 def test_unrecognized_sort_by_returns_422(fake_auth_client: TestClient) -> None:
     """The allowlist from the door, not just the lookup table: `sort_by`
     outside {created_at, title} never reaches the handler at all."""
-    response = fake_auth_client.get("/bookmarks", params={"sort_by": "owner_id"})
+    response = fake_auth_client.get("/v1/bookmarks", params={"sort_by": "owner_id"})
 
     assert response.status_code == 422
 
@@ -138,7 +138,7 @@ def test_pagination_returns_requested_page_size(fake_auth_client: TestClient) ->
     for i in range(5):
         _create(fake_auth_client, f"Bookmark {i}")
 
-    response = fake_auth_client.get("/bookmarks", params={"page": 1, "size": 2})
+    response = fake_auth_client.get("/v1/bookmarks", params={"page": 1, "size": 2})
 
     body = response.json()
     assert len(body["items"]) == 2
@@ -149,7 +149,7 @@ def test_pagination_returns_requested_page_size(fake_auth_client: TestClient) ->
 def test_page_past_the_last_page_returns_empty_items_but_correct_total(fake_auth_client: TestClient) -> None:
     _create(fake_auth_client, "Only One")
 
-    response = fake_auth_client.get("/bookmarks", params={"page": 5, "size": 20})
+    response = fake_auth_client.get("/v1/bookmarks", params={"page": 5, "size": 20})
 
     body = response.json()
     assert response.status_code == 200
@@ -159,25 +159,25 @@ def test_page_past_the_last_page_returns_empty_items_but_correct_total(fake_auth
 
 
 def test_size_at_the_cap_succeeds(fake_auth_client: TestClient) -> None:
-    response = fake_auth_client.get("/bookmarks", params={"size": 100})
+    response = fake_auth_client.get("/v1/bookmarks", params={"size": 100})
 
     assert response.status_code == 200
 
 
 def test_size_past_the_cap_returns_422(fake_auth_client: TestClient) -> None:
-    response = fake_auth_client.get("/bookmarks", params={"size": 101})
+    response = fake_auth_client.get("/v1/bookmarks", params={"size": 101})
 
     assert response.status_code == 422
 
 
 def test_page_zero_returns_422(fake_auth_client: TestClient) -> None:
-    response = fake_auth_client.get("/bookmarks", params={"page": 0})
+    response = fake_auth_client.get("/v1/bookmarks", params={"page": 0})
 
     assert response.status_code == 422
 
 
 def test_no_bookmarks_gives_zero_total_pages_not_a_division_error(fake_auth_client: TestClient) -> None:
-    response = fake_auth_client.get("/bookmarks")
+    response = fake_auth_client.get("/v1/bookmarks")
 
     body = response.json()
     assert body["total"] == 0

@@ -78,7 +78,7 @@ def registered_user(client: TestClient) -> dict[str, str]:
     """Registers one real user via the actual endpoint. Returns the
     credentials used, so a test can log in with them."""
     credentials = {"email": "jane@example.com", "password": "correct horse battery staple"}
-    response = client.post("/auth/register", json=credentials)
+    response = client.post("/v1/auth/register", json=credentials)
     assert response.status_code == 201
     return credentials
 
@@ -90,7 +90,7 @@ def auth_client(client: TestClient, registered_user: dict[str, str]) -> TestClie
     Get an Authenticated Request" section. Exercises register -> login ->
     protected-route access end to end, not just a `get_current_user`
     override standing in for it."""
-    response = client.post("/auth/login", json=registered_user)
+    response = client.post("/v1/auth/login", json=registered_user)
     assert response.status_code == 200
     token = response.json()["access_token"]
     client.headers["Authorization"] = f"Bearer {token}"

@@ -15,6 +15,14 @@ The single main.py file from Phase 0/1 is now split into modules
 course for the precedent, done here at the same point the DB was
 introduced rather than after.
 
+Phase 6: every router now mounts under `/v1` - `prefix="/v1"` passed to
+`include_router` here, layered on top of each router's own `/auth`/
+`/users`/`/bookmarks` prefix, so `/v1` + `/auth` = `/v1/auth`. Nothing
+about the routers themselves changed; only where they're mounted. `/health`
+deliberately stays un-versioned - it's a liveness probe infrastructure
+polls, not part of the API's data contract, and that tooling expects a
+stable path regardless of which API version exists behind it.
+
 Phase 2's lifespan used to call `Base.metadata.create_all(bind=engine)` on
 every startup and seed a couple of dummy bookmarks. Both are gone now:
 - `create_all` and Alembic were two mechanisms both claiming to own the
@@ -50,9 +58,9 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-app.include_router(auth.router)
-app.include_router(users.router)
-app.include_router(bookmarks.router)
+app.include_router(auth.router, prefix="/v1")
+app.include_router(users.router, prefix="/v1")
+app.include_router(bookmarks.router, prefix="/v1")
 
 
 @app.get("/health", tags=["meta"])
