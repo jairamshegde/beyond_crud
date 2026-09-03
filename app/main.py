@@ -30,6 +30,20 @@ hierarchy, so registering for the base class alone catches every
 subclass - every domain error this app raises, anywhere, comes back
 through this one function.
 
+Phase 6: `CORSMiddleware`, configured from `settings.cors_origins` (empty
+by default - no real frontend exists yet, see config.py). `allow_credentials`
+is deliberately `False`, not just left at a cautious default: this app's
+token lives in a manually-set `Authorization` header, never a cookie, so
+there's no browser-attached login-proof for a credentialed CORS request to
+carry in the first place - the classic wildcard-plus-credentials risk (see
+the Phase 6 CORS discussion) doesn't apply to how this app actually works
+today. `allow_headers=["*"]` still needs to include `Authorization`
+specifically for a real cross-origin client to send it at all - `"*"`
+covers that without hand-maintaining a header allowlist. Added via
+`add_middleware` right after the app is created, before routers are
+included - FastAPI's own CORS docs (https://fastapi.tiangolo.com/tutorial/cors/)
+follow the same order.
+
 Phase 2's lifespan used to call `Base.metadata.create_all(bind=engine)` on
 every startup and seed a couple of dummy bookmarks. Both are gone now:
 - `create_all` and Alembic were two mechanisms both claiming to own the
@@ -46,8 +60,10 @@ every startup and seed a couple of dummy bookmarks. Both are gone now:
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from app.config import settings
 from app.exceptions import AppError
 from app.routers import auth, bookmarks, users
 
@@ -65,6 +81,14 @@ app = FastAPI(
     description="A REST API for saving and organizing bookmarks - built phase by phase.",
     version="0.3.0",
     lifespan=lifespan,
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origins,
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 app.include_router(auth.router, prefix="/v1")
