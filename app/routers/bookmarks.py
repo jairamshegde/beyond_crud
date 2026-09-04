@@ -38,9 +38,18 @@ from app.database import get_db
 from app.dependencies import get_current_user
 from app.exceptions import BookmarkNotFoundError
 from app.models import Bookmark, User
-from app.schemas import BookmarkCreate, BookmarkRead, BookmarkUpdate, PaginatedBookmarks
+from app.schemas import BookmarkCreate, BookmarkRead, BookmarkUpdate, ErrorResponse, PaginatedBookmarks
 
-router = APIRouter(prefix="/bookmarks", tags=["bookmarks"])
+NOT_FOUND_RESPONSE = {404: {"model": ErrorResponse, "description": "Bookmark not found"}}
+
+router = APIRouter(
+    prefix="/bookmarks",
+    tags=["bookmarks"],
+    # Every route below depends on get_current_user - shared here once,
+    # per FastAPI's own Bigger Applications docs on router-level
+    # `responses`, instead of repeated on each of the six routes.
+    responses={401: {"model": ErrorResponse, "description": "Invalid or expired token"}},
+)
 
 # Phase 5's allowlist - one source of truth, not two. Originally this was
 # a hand-written dict AND a separately hand-written `Literal[...]` on the
@@ -144,7 +153,7 @@ def list_bookmarks(
     return PaginatedBookmarks(items=items, total=total, page=page, size=size, total_pages=total_pages)
 
 
-@router.get("/{bookmark_id}", response_model=BookmarkRead)
+@router.get("/{bookmark_id}", response_model=BookmarkRead, responses=NOT_FOUND_RESPONSE)
 def get_bookmark(
     bookmark_id: int,
     db: Session = Depends(get_db),
@@ -183,7 +192,7 @@ def create_bookmark(
     return bookmark
 
 
-@router.put("/{bookmark_id}", response_model=BookmarkRead)
+@router.put("/{bookmark_id}", response_model=BookmarkRead, responses=NOT_FOUND_RESPONSE)
 def replace_bookmark(
     bookmark_id: int,
     payload: BookmarkCreate,
@@ -206,7 +215,7 @@ def replace_bookmark(
     return bookmark
 
 
-@router.patch("/{bookmark_id}", response_model=BookmarkRead)
+@router.patch("/{bookmark_id}", response_model=BookmarkRead, responses=NOT_FOUND_RESPONSE)
 def update_bookmark(
     bookmark_id: int,
     payload: BookmarkUpdate,
@@ -230,7 +239,7 @@ def update_bookmark(
     return bookmark
 
 
-@router.delete("/{bookmark_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{bookmark_id}", status_code=status.HTTP_204_NO_CONTENT, responses=NOT_FOUND_RESPONSE)
 def delete_bookmark(
     bookmark_id: int,
     db: Session = Depends(get_db),

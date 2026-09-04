@@ -96,9 +96,22 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(
     title="Bookmark API",
-    description="A REST API for saving and organizing bookmarks - built phase by phase.",
+    description=(
+        "A REST API for saving and organizing bookmarks - built phase by phase. "
+        "Every route lives under `/v1`. Authentication is a JWT bearer token from "
+        "`/v1/auth/login`, sent as `Authorization: Bearer <token>` on every other "
+        "route. Every documented non-2xx response below returns "
+        '`{"detail": "...", "error_code": "..."}` - `error_code` is the stable, '
+        "machine-matchable field; `detail` is free to reword."
+    ),
     version="0.3.0",
     lifespan=lifespan,
+    openapi_tags=[
+        {"name": "auth", "description": "Register and log in - issuing the JWT bearer token every other route requires."},
+        {"name": "bookmarks", "description": "Create, read, update, delete, and query bookmarks - every route scoped to the authenticated caller's own data."},
+        {"name": "users", "description": "The authenticated caller's own profile."},
+        {"name": "meta", "description": "Operational endpoints for infrastructure (e.g. a liveness probe) - deliberately not versioned under /v1, see main.py's own docstring."},
+    ],
 )
 
 app.add_middleware(

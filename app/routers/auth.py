@@ -18,13 +18,18 @@ from fastapi import APIRouter, Depends, status
 from app.database import get_db
 from app.exceptions import DuplicateEmailError, InvalidCredentialsError
 from app.models import User
-from app.schemas import Token, UserCreate, UserLogin, UserRead
+from app.schemas import ErrorResponse, Token, UserCreate, UserLogin, UserRead
 from app.security import create_access_token, hash_password, verify_password
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
-@router.post("/register", response_model=UserRead, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/register",
+    response_model=UserRead,
+    status_code=status.HTTP_201_CREATED,
+    responses={400: {"model": ErrorResponse, "description": "Email already registered"}},
+)
 def register(payload: UserCreate, db: Session = Depends(get_db)) -> User:
     """`email` is unique at the database level (see models.py), but letting
     that constraint be the only guard means a duplicate signup fails with a
@@ -49,7 +54,11 @@ def register(payload: UserCreate, db: Session = Depends(get_db)) -> User:
     return user
 
 
-@router.post("/login", response_model=Token)
+@router.post(
+    "/login",
+    response_model=Token,
+    responses={401: {"model": ErrorResponse, "description": "Invalid email or password"}},
+)
 def login(payload: UserLogin, db: Session = Depends(get_db)) -> Token:
     """Same "Invalid email or password" detail whether the email doesn't
     exist *or* the password is wrong - a distinct "no such email" message
