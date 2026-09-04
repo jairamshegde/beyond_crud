@@ -9,6 +9,7 @@ past what reads cleanly inline; this project stays flat for now, consistent
 with every other route so far.
 """
 
+from loguru import logger
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -44,6 +45,7 @@ def register(payload: UserCreate, db: Session = Depends(get_db)) -> User:
     db.add(user)
     db.commit()
     db.refresh(user)
+    logger.info(f"User registered: id={user.id}")
     return user
 
 

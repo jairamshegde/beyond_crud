@@ -44,6 +44,19 @@ covers that without hand-maintaining a header allowlist. Added via
 included - FastAPI's own CORS docs (https://fastapi.tiangolo.com/tutorial/cors/)
 follow the same order.
 
+Phase 6: `log_requests` logs one line per request - method, path, status,
+duration - the same way for every route, success or domain error alike.
+It doesn't need a try/except around `call_next`: a route raising
+`AppError` never reaches this middleware as an exception at all -
+Starlette's exception-handling layer sits *between* this middleware and
+the router, so `call_next` already returns the handled error response by
+the time control comes back here (see FastAPI's own middleware docs,
+https://fastapi.tiangolo.com/tutorial/middleware/). `app_error_handler`
+below logs a second, more specific line for domain errors - `error_code`
+and `detail`, which this generic line has no way to know - the same
+"errors" event the phase doc calls out, logged from the one place that
+already formats every domain error.
+
 Phase 2's lifespan used to call `Base.metadata.create_all(bind=engine)` on
 every startup and seed a couple of dummy bookmarks. Both are gone now:
 - `create_all` and Alembic were two mechanisms both claiming to own the
@@ -57,15 +70,20 @@ every startup and seed a couple of dummy bookmarks. Both are gone now:
   means registering a user and creating bookmarks as them.
 """
 
+import time
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from loguru import logger
 
 from app.config import settings
 from app.exceptions import AppError
+from app.logging_config import configure_logging
 from app.routers import auth, bookmarks, users
+
+configure_logging()
 
 
 @asynccontextmanager
@@ -96,15 +114,29 @@ app.include_router(users.router, prefix="/v1")
 app.include_router(bookmarks.router, prefix="/v1")
 
 
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    start = time.perf_counter()
+    response = await call_next(request)
+    duration_ms = (time.perf_counter() - start) * 1000
+    logger.info(f"{request.method} {request.url.path} {response.status_code} {duration_ms:.1f}ms")
+    return response
+
+
 @app.exception_handler(AppError)
-async def app_error_handler(_request: Request, exc: AppError) -> JSONResponse:
+async def app_error_handler(request: Request, exc: AppError) -> JSONResponse:
     """The one place every domain error becomes an actual HTTP response.
     `error_code` is the stable, machine-matchable field; `detail` is the
     human-readable one - free to reword later without breaking a client
     that keys off `error_code` instead. `exc.headers` is `None` for most
     errors and only set where a specific error needs one (`InvalidTokenError`'s
     `WWW-Authenticate: Bearer`, per RFC 7235) - this handler doesn't need to
-    know which errors need headers, only how to pass one along if present."""
+    know which errors need headers, only how to pass one along if present.
+
+    The `logger.warning` here is deliberate, not incidental: it's the one
+    place `error_code`/`detail` are known, so it's the one place that can
+    log them - `log_requests` above only ever sees a status code, not why."""
+    logger.warning(f"Domain error: {exc.error_code} - {exc.detail} ({request.method} {request.url.path})")
     return JSONResponse(
         status_code=exc.status_code,
         content={"detail": exc.detail, "error_code": exc.error_code},

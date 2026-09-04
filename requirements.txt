@@ -29,6 +29,11 @@ celery[redis]==5.6.3                   # Asynchronous distributed task worker en
 redis==5.2.1                    # Highly efficient broker / caching layer for Celery
 
 # ==============================================================================
+# Logging (Phase 6)
+# ==============================================================================
+loguru==0.7.3                   # Structured logging with non-blocking (enqueue) sinks
+
+# ==============================================================================
 # Testing (Phase 4)
 # ==============================================================================
 pytest==8.3.4                   # Test runner

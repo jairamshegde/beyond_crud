@@ -28,6 +28,7 @@ error in the app, not just this one.
 
 from typing import Literal, get_args
 
+from loguru import logger
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
@@ -178,6 +179,7 @@ def create_bookmark(
     db.add(bookmark)
     db.commit()
     db.refresh(bookmark)
+    logger.info(f"Bookmark created: id={bookmark.id} owner_id={bookmark.owner_id}")
     return bookmark
 
 

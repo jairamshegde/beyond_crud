@@ -25,6 +25,11 @@ frontend exists for this project yet, so there's nothing to trust by
 default; an empty allowlist is a safe, honest starting point that has to
 be deliberately opened up once a real frontend origin exists, rather than
 guessing at one now.
+
+Phase 6: `log_level` added the same way - see logging_config.py for where
+it's actually used. `"INFO"` by default: normal request/business-event
+lines, not the noisier `"DEBUG"` a real investigation might turn on
+temporarily via `.env` without a code change.
 """
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -35,6 +40,7 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 30
     cors_origins: list[str] = []
+    log_level: str = "INFO"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
