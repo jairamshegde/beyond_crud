@@ -1,13 +1,11 @@
 """
 Phase 6: logging tests.
 
-`log_capture` adds its own sink with `enqueue=False` - deliberately
-*not* matching the app's real sink (`enqueue=True`, see logging_config.py).
-Those are independent per-sink settings, not a single global switch: the
-real sink stays non-blocking for actual traffic, while this one writes
-synchronously so a message is guaranteed to already be in `messages` the
-moment `client.post(...)` returns - no `logger.complete()` wait needed,
-no race.
+`log_capture` adds its own sink with `enqueue=False`, independent of
+whatever the app's own sink is configured with (each `logger.add()` call
+sets its own - see logging_config.py) - synchronous, so a message is
+guaranteed to already be in `messages` the moment `client.post(...)`
+returns, no race.
 """
 
 from collections.abc import Generator
