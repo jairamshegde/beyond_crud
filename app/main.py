@@ -15,6 +15,59 @@ The single main.py file from Phase 0/1 is now split into modules
 course for the precedent, done here at the same point the DB was
 introduced rather than after.
 
+Phase 6: every router now mounts under `/v1` - `prefix="/v1"` passed to
+`include_router` here, layered on top of each router's own `/auth`/
+`/users`/`/bookmarks` prefix, so `/v1` + `/auth` = `/v1/auth`. Nothing
+about the routers themselves changed; only where they're mounted. `/health`
+deliberately stays un-versioned - it's a liveness probe infrastructure
+polls, not part of the API's data contract, and that tooling expects a
+stable path regardless of which API version exists behind it.
+
+Phase 6: one exception handler, registered for `AppError` (see
+exceptions.py), replaces every route's own inline `HTTPException(...)`.
+Starlette matches a raised exception to a handler by walking its class
+hierarchy, so registering for the base class alone catches every
+subclass - every domain error this app raises, anywhere, comes back
+through this one function.
+
+Phase 6: `CORSMiddleware`, configured from `settings.cors_origins` (empty
+by default - no real frontend exists yet, see config.py). `allow_credentials`
+is deliberately `False`, not just left at a cautious default: this app's
+token lives in a manually-set `Authorization` header, never a cookie, so
+there's no browser-attached login-proof for a credentialed CORS request to
+carry in the first place - the classic wildcard-plus-credentials risk (see
+the Phase 6 CORS discussion) doesn't apply to how this app actually works
+today. `allow_headers=["*"]` still needs to include `Authorization`
+specifically for a real cross-origin client to send it at all - `"*"`
+covers that without hand-maintaining a header allowlist. Added via
+`add_middleware` right after the app is created, before routers are
+included - FastAPI's own CORS docs (https://fastapi.tiangolo.com/tutorial/cors/)
+follow the same order.
+
+Phase 6: `log_requests` logs one line per request - method, path, status,
+duration - the same way for every route, success or domain error alike.
+It doesn't need a try/except around `call_next`: a route raising
+`AppError` never reaches this middleware as an exception at all -
+Starlette's exception-handling layer sits *between* this middleware and
+the router, so `call_next` already returns the handled error response by
+the time control comes back here (see FastAPI's own middleware docs,
+https://fastapi.tiangolo.com/tutorial/middleware/). `app_error_handler`
+below logs a second, more specific line for domain errors - `error_code`
+and `detail`, which this generic line has no way to know - the same
+"errors" event the phase doc calls out, logged from the one place that
+already formats every domain error.
+
+Phase 6: `limiter` (rate_limit.py) is attached at `app.state.limiter` -
+slowapi's own convention for where it looks for the active `Limiter`
+instance. `RateLimitExceeded` gets the same one-handler treatment as
+`AppError`: registered once, formats the identical `{detail, error_code}`
+shape. It's a separate registration, not folded into `app_error_handler`,
+because `RateLimitExceeded` is slowapi's own exception class, not a
+subclass of this app's `AppError` - nothing to gain by pretending
+otherwise. No `SlowAPIMiddleware` is added - see rate_limit.py for why
+the two routes' own `@limiter.limit(...)` decorators are already
+sufficient on their own.
+
 Phase 2's lifespan used to call `Base.metadata.create_all(bind=engine)` on
 every startup and seed a couple of dummy bookmarks. Both are gone now:
 - `create_all` and Alembic were two mechanisms both claiming to own the
@@ -28,11 +81,22 @@ every startup and seed a couple of dummy bookmarks. Both are gone now:
   means registering a user and creating bookmarks as them.
 """
 
+import time
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from loguru import logger
+from slowapi.errors import RateLimitExceeded
 
+from app.config import settings
+from app.exceptions import AppError
+from app.logging_config import configure_logging
+from app.rate_limit import limiter
 from app.routers import auth, bookmarks, users
+
+configure_logging()
 
 
 @asynccontextmanager
@@ -45,14 +109,83 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(
     title="Bookmark API",
-    description="A REST API for saving and organizing bookmarks - built phase by phase.",
+    description=(
+        "A REST API for saving and organizing bookmarks - built phase by phase. "
+        "Every route lives under `/v1`. Authentication is a JWT bearer token from "
+        "`/v1/auth/login`, sent as `Authorization: Bearer <token>` on every other "
+        "route. Every documented non-2xx response below returns "
+        '`{"detail": "...", "error_code": "..."}` - `error_code` is the stable, '
+        "machine-matchable field; `detail` is free to reword."
+    ),
     version="0.3.0",
     lifespan=lifespan,
+    openapi_tags=[
+        {"name": "auth", "description": "Register and log in - issuing the JWT bearer token every other route requires."},
+        {"name": "bookmarks", "description": "Create, read, update, delete, and query bookmarks - every route scoped to the authenticated caller's own data."},
+        {"name": "users", "description": "The authenticated caller's own profile."},
+        {"name": "meta", "description": "Operational endpoints for infrastructure (e.g. a liveness probe) - deliberately not versioned under /v1, see main.py's own docstring."},
+    ],
 )
 
-app.include_router(auth.router)
-app.include_router(users.router)
-app.include_router(bookmarks.router)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origins,
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.state.limiter = limiter
+
+app.include_router(auth.router, prefix="/v1")
+app.include_router(users.router, prefix="/v1")
+app.include_router(bookmarks.router, prefix="/v1")
+
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    start = time.perf_counter()
+    response = await call_next(request)
+    duration_ms = (time.perf_counter() - start) * 1000
+    logger.info(f"{request.method} {request.url.path} {response.status_code} {duration_ms:.1f}ms")
+    return response
+
+
+@app.exception_handler(AppError)
+async def app_error_handler(request: Request, exc: AppError) -> JSONResponse:
+    """The one place every domain error becomes an actual HTTP response.
+    `error_code` is the stable, machine-matchable field; `detail` is the
+    human-readable one - free to reword later without breaking a client
+    that keys off `error_code` instead. `exc.headers` is `None` for most
+    errors and only set where a specific error needs one (`InvalidTokenError`'s
+    `WWW-Authenticate: Bearer`, per RFC 7235) - this handler doesn't need to
+    know which errors need headers, only how to pass one along if present.
+
+    The `logger.warning` here is deliberate, not incidental: it's the one
+    place `error_code`/`detail` are known, so it's the one place that can
+    log them - `log_requests` above only ever sees a status code, not why."""
+    logger.warning(f"Domain error: {exc.error_code} - {exc.detail} ({request.method} {request.url.path})")
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail, "error_code": exc.error_code},
+        headers=exc.headers,
+    )
+
+
+@app.exception_handler(RateLimitExceeded)
+async def rate_limit_handler(request: Request, exc: RateLimitExceeded) -> JSONResponse:
+    """Same shape as app_error_handler, deliberately - a client shouldn't
+    have to know this came from a different library than every other
+    error in the app. `exc.detail` (slowapi's own, e.g. "5 per 1 minute")
+    is logged for whoever's watching the logs, but not put in the response
+    body itself - "Too many requests" is what a caller actually needs to
+    know; the exact configured threshold isn't API surface worth
+    committing to."""
+    logger.warning(f"Rate limit exceeded: {exc.detail} ({request.method} {request.url.path})")
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": "Too many requests. Please try again later.", "error_code": "rate_limit_exceeded"},
+    )
 
 
 @app.get("/health", tags=["meta"])

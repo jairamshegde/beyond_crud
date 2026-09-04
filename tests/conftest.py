@@ -61,7 +61,16 @@ def client(db_session: Session) -> Generator[TestClient, None, None]:
     behaves. Good enough for testing route behavior; the request-scoped
     session lifecycle itself is what Phase 2/4's other tests already cover
     conceptually.
+
+    Phase 6: `app.state.limiter.reset()` clears slowapi's counters before
+    every test. `TestClient` reports a fixed client host ("testclient"),
+    not a real IP, so without this every test would share one global
+    rate-limit bucket per route - the register/login rate limit's own
+    tests would poison every other test that happens to run afterward and
+    also calls those routes (nearly all of them, via `registered_user`/
+    `auth_client` below).
     """
+    app.state.limiter.reset()
 
     def override_get_db() -> Generator[Session, None, None]:
         yield db_session
@@ -78,7 +87,7 @@ def registered_user(client: TestClient) -> dict[str, str]:
     """Registers one real user via the actual endpoint. Returns the
     credentials used, so a test can log in with them."""
     credentials = {"email": "jane@example.com", "password": "correct horse battery staple"}
-    response = client.post("/auth/register", json=credentials)
+    response = client.post("/v1/auth/register", json=credentials)
     assert response.status_code == 201
     return credentials
 
@@ -90,7 +99,7 @@ def auth_client(client: TestClient, registered_user: dict[str, str]) -> TestClie
     Get an Authenticated Request" section. Exercises register -> login ->
     protected-route access end to end, not just a `get_current_user`
     override standing in for it."""
-    response = client.post("/auth/login", json=registered_user)
+    response = client.post("/v1/auth/login", json=registered_user)
     assert response.status_code == 200
     token = response.json()["access_token"]
     client.headers["Authorization"] = f"Bearer {token}"

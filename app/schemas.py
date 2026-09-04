@@ -39,9 +39,9 @@ class BookmarkUpdate(BaseModel):
     Phase 1 note #1. Used for PATCH: only fields actually present in the
     request body are changed (`exclude_unset=True` on the read side)."""
 
-    title: str | None = Field(default=None, min_length=1, max_length=200)
-    url: HttpUrl | None = None
-    category: str | None = Field(default=None, max_length=100)
+    title: str | None = Field(default=None, min_length=1, max_length=200, examples=["FastAPI Docs"])
+    url: HttpUrl | None = Field(default=None, examples=["https://fastapi.tiangolo.com"])
+    category: str | None = Field(default=None, max_length=100, examples=["docs"])
     description: str | None = Field(default=None, max_length=500)
 
 
@@ -97,8 +97,8 @@ class UserLogin(BaseModel):
     correct password shorter than 8 characters should still log in; whether
     it's correct is `verify_password`'s job, not this schema's."""
 
-    email: EmailStr
-    password: str
+    email: EmailStr = Field(examples=["jane@example.com"])
+    password: str = Field(examples=["correct horse battery staple"])
 
 
 class Token(BaseModel):
@@ -108,3 +108,16 @@ class Token(BaseModel):
 
     access_token: str
     token_type: str = "bearer"
+
+
+class ErrorResponse(BaseModel):
+    """Phase 6: the shape `app_error_handler` (main.py) actually returns
+    for every domain error - exists purely to document that shape in
+    `/docs` via a route's `responses=`. Nothing in the app ever builds
+    one of these directly; the handler builds the same shape by hand from
+    an `AppError`, which is a plain exception, not a Pydantic model - this
+    schema and that handler have to be kept in sync by hand, same as any
+    other documentation describing what code actually does."""
+
+    detail: str = Field(examples=["Bookmark not found"])
+    error_code: str = Field(examples=["bookmark_not_found"])

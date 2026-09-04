@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 
 def test_register_returns_user_without_password(client: TestClient) -> None:
     response = client.post(
-        "/auth/register",
+        "/v1/auth/register",
         json={"email": "jane@example.com", "password": "correct horse battery staple"},
     )
 
@@ -22,10 +22,10 @@ def test_register_returns_user_without_password(client: TestClient) -> None:
 
 def test_register_rejects_duplicate_email(client: TestClient) -> None:
     payload = {"email": "jane@example.com", "password": "correct horse battery staple"}
-    first = client.post("/auth/register", json=payload)
+    first = client.post("/v1/auth/register", json=payload)
     assert first.status_code == 201
 
-    second = client.post("/auth/register", json=payload)
+    second = client.post("/v1/auth/register", json=payload)
 
     assert second.status_code == 400
 
@@ -33,7 +33,7 @@ def test_register_rejects_duplicate_email(client: TestClient) -> None:
 def test_login_succeeds_with_correct_credentials(
     client: TestClient, registered_user: dict[str, str]
 ) -> None:
-    response = client.post("/auth/login", json=registered_user)
+    response = client.post("/v1/auth/login", json=registered_user)
 
     assert response.status_code == 200
     body = response.json()
@@ -43,7 +43,7 @@ def test_login_succeeds_with_correct_credentials(
 
 def test_login_rejects_wrong_password(client: TestClient, registered_user: dict[str, str]) -> None:
     response = client.post(
-        "/auth/login", json={"email": registered_user["email"], "password": "not the password"}
+        "/v1/auth/login", json={"email": registered_user["email"], "password": "not the password"}
     )
 
     assert response.status_code == 401
@@ -51,7 +51,7 @@ def test_login_rejects_wrong_password(client: TestClient, registered_user: dict[
 
 def test_login_rejects_unknown_email(client: TestClient) -> None:
     response = client.post(
-        "/auth/login", json={"email": "nobody@example.com", "password": "whatever it is"}
+        "/v1/auth/login", json={"email": "nobody@example.com", "password": "whatever it is"}
     )
 
     assert response.status_code == 401
@@ -66,10 +66,10 @@ def test_login_failure_shape_is_identical_for_wrong_password_and_unknown_email(
     A test that only checks "login fails with 401" doesn't verify that -
     it takes asserting the *same* status and body for both failure reasons."""
     wrong_password = client.post(
-        "/auth/login", json={"email": registered_user["email"], "password": "not the password"}
+        "/v1/auth/login", json={"email": registered_user["email"], "password": "not the password"}
     )
     unknown_email = client.post(
-        "/auth/login", json={"email": "nobody@example.com", "password": "whatever it is"}
+        "/v1/auth/login", json={"email": "nobody@example.com", "password": "whatever it is"}
     )
 
     assert wrong_password.status_code == unknown_email.status_code

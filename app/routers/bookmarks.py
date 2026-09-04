@@ -18,21 +18,38 @@ time. The old dedicated `/bookmarks/search?q=` route is gone - its whole
 job (case-insensitive title search) is now a subset of what `search` does
 here (title OR description), so keeping both would just be two competing
 ways to do the same thing.
+
+Phase 6: `_get_bookmark_or_404`'s inline `HTTPException` is now
+`raise BookmarkNotFoundError()` (see exceptions.py) - this file no longer
+decides what a 404 looks like, just that one happened. The single handler
+registered in main.py does the formatting, the same way for every domain
+error in the app, not just this one.
 """
 
 from typing import Literal, get_args
 
+from loguru import logger
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Query, status
 
 from app.database import get_db
 from app.dependencies import get_current_user
+from app.exceptions import BookmarkNotFoundError
 from app.models import Bookmark, User
-from app.schemas import BookmarkCreate, BookmarkRead, BookmarkUpdate, PaginatedBookmarks
+from app.schemas import BookmarkCreate, BookmarkRead, BookmarkUpdate, ErrorResponse, PaginatedBookmarks
 
-router = APIRouter(prefix="/bookmarks", tags=["bookmarks"])
+NOT_FOUND_RESPONSE = {404: {"model": ErrorResponse, "description": "Bookmark not found"}}
+
+router = APIRouter(
+    prefix="/bookmarks",
+    tags=["bookmarks"],
+    # Every route below depends on get_current_user - shared here once,
+    # per FastAPI's own Bigger Applications docs on router-level
+    # `responses`, instead of repeated on each of the six routes.
+    responses={401: {"model": ErrorResponse, "description": "Invalid or expired token"}},
+)
 
 # Phase 5's allowlist - one source of truth, not two. Originally this was
 # a hand-written dict AND a separately hand-written `Literal[...]` on the
@@ -84,7 +101,7 @@ def _get_bookmark_or_404(db: Session, bookmark_id: int, owner_id: int) -> Bookma
     stmt = select(Bookmark).where(Bookmark.id == bookmark_id, Bookmark.owner_id == owner_id)
     bookmark = db.execute(stmt).scalar_one_or_none()
     if bookmark is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Bookmark not found")
+        raise BookmarkNotFoundError()
     return bookmark
 
 
@@ -136,7 +153,7 @@ def list_bookmarks(
     return PaginatedBookmarks(items=items, total=total, page=page, size=size, total_pages=total_pages)
 
 
-@router.get("/{bookmark_id}", response_model=BookmarkRead)
+@router.get("/{bookmark_id}", response_model=BookmarkRead, responses=NOT_FOUND_RESPONSE)
 def get_bookmark(
     bookmark_id: int,
     db: Session = Depends(get_db),
@@ -171,10 +188,11 @@ def create_bookmark(
     db.add(bookmark)
     db.commit()
     db.refresh(bookmark)
+    logger.info(f"Bookmark created: id={bookmark.id} owner_id={bookmark.owner_id}")
     return bookmark
 
 
-@router.put("/{bookmark_id}", response_model=BookmarkRead)
+@router.put("/{bookmark_id}", response_model=BookmarkRead, responses=NOT_FOUND_RESPONSE)
 def replace_bookmark(
     bookmark_id: int,
     payload: BookmarkCreate,
@@ -197,7 +215,7 @@ def replace_bookmark(
     return bookmark
 
 
-@router.patch("/{bookmark_id}", response_model=BookmarkRead)
+@router.patch("/{bookmark_id}", response_model=BookmarkRead, responses=NOT_FOUND_RESPONSE)
 def update_bookmark(
     bookmark_id: int,
     payload: BookmarkUpdate,
@@ -221,7 +239,7 @@ def update_bookmark(
     return bookmark
 
 
-@router.delete("/{bookmark_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{bookmark_id}", status_code=status.HTTP_204_NO_CONTENT, responses=NOT_FOUND_RESPONSE)
 def delete_bookmark(
     bookmark_id: int,
     db: Session = Depends(get_db),

@@ -11,9 +11,13 @@ from fastapi import APIRouter, Depends
 
 from app.dependencies import get_current_user
 from app.models import User
-from app.schemas import UserRead
+from app.schemas import ErrorResponse, UserRead
 
-router = APIRouter(prefix="/users", tags=["users"])
+router = APIRouter(
+    prefix="/users",
+    tags=["users"],
+    responses={401: {"model": ErrorResponse, "description": "Invalid or expired token"}},
+)
 
 
 @router.get("/me", response_model=UserRead)
