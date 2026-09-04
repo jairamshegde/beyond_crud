@@ -31,7 +31,12 @@ redis==5.2.1                    # Highly efficient broker / caching layer for Ce
 # ==============================================================================
 # Logging (Phase 6)
 # ==============================================================================
-loguru==0.7.3                   # Structured logging with non-blocking (enqueue) sinks
+loguru==0.7.3                   # Structured logging - see app/logging_config.py
+
+# ==============================================================================
+# Rate Limiting (Phase 6)
+# ==============================================================================
+slowapi==0.1.10                 # Rate limiting for /auth/login and /auth/register only
 
 # ==============================================================================
 # Testing (Phase 4)

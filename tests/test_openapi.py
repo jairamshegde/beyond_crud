@@ -43,5 +43,11 @@ def test_list_and_create_bookmarks_document_401_but_not_404(client: TestClient) 
 def test_register_and_login_document_their_own_distinct_errors(client: TestClient) -> None:
     schema = client.get("/openapi.json").json()
 
-    assert "400" in schema["paths"]["/v1/auth/register"]["post"]["responses"]
-    assert "401" in schema["paths"]["/v1/auth/login"]["post"]["responses"]
+    register_responses = schema["paths"]["/v1/auth/register"]["post"]["responses"]
+    login_responses = schema["paths"]["/v1/auth/login"]["post"]["responses"]
+    assert "400" in register_responses
+    assert "401" in login_responses
+    # Phase 6: both are rate-limited (see routers/auth.py's AUTH_RATE_LIMIT) -
+    # a 429 nothing else in the app can return.
+    assert "429" in register_responses
+    assert "429" in login_responses

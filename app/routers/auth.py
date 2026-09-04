@@ -7,30 +7,49 @@ route body, no separate service-layer class. A dedicated service layer
 pattern once the query logic gets reused across multiple routes or grows
 past what reads cleanly inline; this project stays flat for now, consistent
 with every other route so far.
+
+Phase 6: `@limiter.limit(AUTH_RATE_LIMIT)` on both routes - the one place
+in this app rate limiting applies at all, see the Phase 6 rate-limiting
+discussion for why it stops here. Both need `request: Request` as a
+parameter now - not used in either body, but slowapi's decorator requires
+it (raises at import time otherwise): it's what `key_func` reads the
+caller's IP off of.
 """
 
 from loguru import logger
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Request, status
 
 from app.database import get_db
 from app.exceptions import DuplicateEmailError, InvalidCredentialsError
 from app.models import User
+from app.rate_limit import limiter
 from app.schemas import ErrorResponse, Token, UserCreate, UserLogin, UserRead
 from app.security import create_access_token, hash_password, verify_password
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+# 5 attempts/minute/IP - generous for a real user who mistypes a password
+# once or twice, tight enough that a script guessing passwords doesn't get
+# meaningful throughput. Same threshold for both routes: neither has a
+# reason to be more or less permissive than the other here.
+AUTH_RATE_LIMIT = "5/minute"
+TOO_MANY_REQUESTS_RESPONSE = {429: {"model": ErrorResponse, "description": "Too many requests"}}
 
 
 @router.post(
     "/register",
     response_model=UserRead,
     status_code=status.HTTP_201_CREATED,
-    responses={400: {"model": ErrorResponse, "description": "Email already registered"}},
+    responses={
+        400: {"model": ErrorResponse, "description": "Email already registered"},
+        **TOO_MANY_REQUESTS_RESPONSE,
+    },
 )
-def register(payload: UserCreate, db: Session = Depends(get_db)) -> User:
+@limiter.limit(AUTH_RATE_LIMIT)
+def register(request: Request, payload: UserCreate, db: Session = Depends(get_db)) -> User:
     """`email` is unique at the database level (see models.py), but letting
     that constraint be the only guard means a duplicate signup fails with a
     raw IntegrityError - a 500, not a meaningful 400. Checking first turns
@@ -57,9 +76,13 @@ def register(payload: UserCreate, db: Session = Depends(get_db)) -> User:
 @router.post(
     "/login",
     response_model=Token,
-    responses={401: {"model": ErrorResponse, "description": "Invalid email or password"}},
+    responses={
+        401: {"model": ErrorResponse, "description": "Invalid email or password"},
+        **TOO_MANY_REQUESTS_RESPONSE,
+    },
 )
-def login(payload: UserLogin, db: Session = Depends(get_db)) -> Token:
+@limiter.limit(AUTH_RATE_LIMIT)
+def login(request: Request, payload: UserLogin, db: Session = Depends(get_db)) -> Token:
     """Same "Invalid email or password" detail whether the email doesn't
     exist *or* the password is wrong - a distinct "no such email" message
     would let an attacker enumerate which addresses are registered by

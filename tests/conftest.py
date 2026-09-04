@@ -61,7 +61,16 @@ def client(db_session: Session) -> Generator[TestClient, None, None]:
     behaves. Good enough for testing route behavior; the request-scoped
     session lifecycle itself is what Phase 2/4's other tests already cover
     conceptually.
+
+    Phase 6: `app.state.limiter.reset()` clears slowapi's counters before
+    every test. `TestClient` reports a fixed client host ("testclient"),
+    not a real IP, so without this every test would share one global
+    rate-limit bucket per route - the register/login rate limit's own
+    tests would poison every other test that happens to run afterward and
+    also calls those routes (nearly all of them, via `registered_user`/
+    `auth_client` below).
     """
+    app.state.limiter.reset()
 
     def override_get_db() -> Generator[Session, None, None]:
         yield db_session

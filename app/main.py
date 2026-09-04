@@ -57,6 +57,17 @@ and `detail`, which this generic line has no way to know - the same
 "errors" event the phase doc calls out, logged from the one place that
 already formats every domain error.
 
+Phase 6: `limiter` (rate_limit.py) is attached at `app.state.limiter` -
+slowapi's own convention for where it looks for the active `Limiter`
+instance. `RateLimitExceeded` gets the same one-handler treatment as
+`AppError`: registered once, formats the identical `{detail, error_code}`
+shape. It's a separate registration, not folded into `app_error_handler`,
+because `RateLimitExceeded` is slowapi's own exception class, not a
+subclass of this app's `AppError` - nothing to gain by pretending
+otherwise. No `SlowAPIMiddleware` is added - see rate_limit.py for why
+the two routes' own `@limiter.limit(...)` decorators are already
+sufficient on their own.
+
 Phase 2's lifespan used to call `Base.metadata.create_all(bind=engine)` on
 every startup and seed a couple of dummy bookmarks. Both are gone now:
 - `create_all` and Alembic were two mechanisms both claiming to own the
@@ -77,10 +88,12 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from loguru import logger
+from slowapi.errors import RateLimitExceeded
 
 from app.config import settings
 from app.exceptions import AppError
 from app.logging_config import configure_logging
+from app.rate_limit import limiter
 from app.routers import auth, bookmarks, users
 
 configure_logging()
@@ -122,6 +135,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.state.limiter = limiter
+
 app.include_router(auth.router, prefix="/v1")
 app.include_router(users.router, prefix="/v1")
 app.include_router(bookmarks.router, prefix="/v1")
@@ -154,6 +169,22 @@ async def app_error_handler(request: Request, exc: AppError) -> JSONResponse:
         status_code=exc.status_code,
         content={"detail": exc.detail, "error_code": exc.error_code},
         headers=exc.headers,
+    )
+
+
+@app.exception_handler(RateLimitExceeded)
+async def rate_limit_handler(request: Request, exc: RateLimitExceeded) -> JSONResponse:
+    """Same shape as app_error_handler, deliberately - a client shouldn't
+    have to know this came from a different library than every other
+    error in the app. `exc.detail` (slowapi's own, e.g. "5 per 1 minute")
+    is logged for whoever's watching the logs, but not put in the response
+    body itself - "Too many requests" is what a caller actually needs to
+    know; the exact configured threshold isn't API surface worth
+    committing to."""
+    logger.warning(f"Rate limit exceeded: {exc.detail} ({request.method} {request.url.path})")
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": "Too many requests. Please try again later.", "error_code": "rate_limit_exceeded"},
     )
 
 
